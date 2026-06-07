@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Psychic Flashcard Quiz</title>
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<meta name="theme-color" content="#0d0d0f">
+<style>
+  :root {
+    --bg:#0d0d0f; --card:#1a1a1e; --border:rgba(255,255,255,0.09);
+    --text:#f2f2f2; --muted:rgba(255,255,255,0.38);
+    --green:#3fcf6e; --red:#f05c5c; --blue:#4da6ff; --purple:#a78bfa; --yellow:#facc15;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
+  body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; height:100dvh; display:flex; flex-direction:column; overflow:hidden; }
+
+  #topbar { display:flex; align-items:center; justify-content:space-between; padding:10px 12px; gap:6px; flex-shrink:0; background:var(--card); border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  .mode-pills { display:flex; gap:5px; }
+  .pill { padding:6px 12px; border-radius:999px; border:1px solid var(--border); background:transparent; color:var(--muted); font-size:12px; cursor:pointer; transition:all 0.15s; }
+  .pill.active { background:#fff; color:#111; border-color:#fff; font-weight:600; }
+  .opt-pill { padding:6px 12px; border-radius:999px; border:1px solid var(--border); background:transparent; color:var(--muted); font-size:12px; cursor:pointer; }
+  .opt-pill.on { border-color:rgba(77,166,255,0.4); background:rgba(77,166,255,0.12); color:var(--blue); }
+  .opt-pill.yon { border-color:rgba(250,204,21,0.4); background:rgba(250,204,21,0.1); color:var(--yellow); }
+
+  #cam-section { flex:1; position:relative; overflow:hidden; background:#000; }
+  #video { width:100%; height:100%; object-fit:cover; display:block; }
+  #canvas { display:none; }
+
+  #attempt-dots { position:absolute; top:12px; left:50%; transform:translateX(-50%); display:none; align-items:center; gap:8px; background:rgba(0,0,0,0.65); backdrop-filter:blur(10px); border:1px solid rgba(255,255,255,0.1); border-radius:999px; padding:8px 16px; }
+  #attempt-dots.visible { display:flex; }
+  .dot { width:10px; height:10px; border-radius:50%; background:rgba(255,255,255,0.2); transition:all 0.3s; }
+  .dot.used { background:var(--red); }
+  .dot.active { background:var(--yellow); box-shadow:0 0 6px rgba(250,204,21,0.6); }
+  #attempt-label { font-size:11px; color:rgba(255,255,255,0.5); letter-spacing:0.04em; margin-left:4px; }
+
+  #status-badge { position:absolute; top:12px; right:12px; background:rgba(0,0,0,0.65); backdrop-filter:blur(10px); border:1px solid rgba(255,255,255,0.1); border-radius:999px; padding:6px 14px; font-size:11px; color:rgba(255,255,255,0.6); display:none; pointer-events:none; }
+  #status-badge.visible { display:block; }
+  #status-badge.found { border-color:rgba(63,207,110,0.5); color:var(--green); }
+  #status-badge.notfound { border-color:rgba(240,92,92,0.4); color:var(--red); }
+
+  #mic-badge { position:absolute; bottom:12px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.65); backdrop-filter:blur(10px); border:1px solid rgba(255,255,255,0.1); border-radius:999px; padding:10px 24px; font-size:13px; color:rgba(255,255,255,0.5); transition:all 0.2s; display:none; white-space:nowrap; pointer-events:none; }
+  #mic-badge.visible { display:block; }
+  #mic-badge.listening { border-color:rgba(240,92,92,0.7); color:var(--red); background:rgba(240,92,92,0.14); animation:glow 1.3s infinite; }
+  #mic-badge.thinking { border-color:rgba(77,166,255,0.6); color:var(--blue); background:rgba(77,166,255,0.1); }
+  @keyframes glow { 0%,100%{box-shadow:0 0 0 0 rgba(240,92,92,0.35);}50%{box-shadow:0 0 0 12px rgba(240,92,92,0);} }
+
+  .overlay { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; padding:28px; }
+  #screen-start { background:linear-gradient(170deg,#0d0d0f,#1a1a1e); }
+  #screen-start h2 { font-size:20px; font-weight:700; text-align:center; }
+  #screen-start p { font-size:13px; color:var(--muted); text-align:center; line-height:1.7; max-width:300px; }
+  #btn-ready { background:#fff; color:#111; border:none; border-radius:999px; font-size:19px; font-weight:700; padding:16px 52px; cursor:pointer; box-shadow:0 0 40px rgba(255,255,255,0.18); transition:transform 0.12s; }
+  #btn-ready:active { transform:scale(0.96); }
+  .api-row { display:flex; flex-direction:column; gap:7px; width:100%; max-width:310px; }
+  .api-row label { font-size:11px; color:var(--muted); letter-spacing:0.04em; text-transform:uppercase; }
+  .api-input-wrap { display:flex; gap:7px; align-items:center; }
+  .api-row input { background:rgba(255,255,255,0.06); border:1px solid var(--border); border-radius:10px; padding:11px 13px; color:var(--text); font-size:12px; font-family:monospace; width:100%; outline:none; }
+  #clear-key-btn { background:transparent; border:1px solid var(--border); border-radius:8px; color:var(--muted); font-size:11px; padding:6px 10px; cursor:pointer; white-space:nowrap; flex-shrink:0; }
+  .api-note { font-size:11px; color:var(--muted); text-align:center; line-height:1.6; }
+  .api-note a { color:var(--blue); }
+  #key-saved-badge { font-size:11px; color:var(--green); text-align:center; display:none; }
+
+  #feedback-bar { flex-shrink:0; padding:14px 18px; text-align:center; font-size:17px; font-weight:600; min-height:60px; display:flex; align-items:center; justify-content:center; background:var(--card); border-top:1px solid var(--border); transition:background 0.3s,color 0.3s; }
+  #feedback-bar.idle    { color:var(--muted); font-size:13px; font-weight:400; }
+  #feedback-bar.correct { background:rgba(63,207,110,0.13); color:var(--green); }
+  #feedback-bar.wrong   { background:rgba(240,92,92,0.08); color:var(--red); font-size:14px; }
+  #feedback-bar.reveal  { background:rgba(240,92,92,0.15); color:var(--red); }
+  #feedback-bar.thinking{ background:rgba(77,166,255,0.08); color:var(--blue); font-size:14px; }
+  #feedback-bar.unclear { background:rgba(167,139,250,0.1); color:var(--purple); font-size:13px; }
+  #feedback-bar.try     { background:rgba(250,204,21,0.08); color:var(--yellow); font-size:14px; }
+
+  #bottombar { flex-shrink:0; display:flex; align-items:center; justify-content:space-between; padding:8px 14px 16px; gap:8px; background:var(--card); border-top:1px solid var(--border); }
+  .ctrl { background:transparent; border:1px solid var(--border); border-radius:999px; color:var(--muted); font-size:12px; padding:7px 14px; cursor:pointer; }
+  #score-tag { font-size:12px; color:var(--muted); }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div class="mode-pills">
+    <button class="pill active" onclick="setMode('mix')">Mix</button>
+    <button class="pill" onclick="setMode('colors')">Colors</button>
+    <button class="pill" onclick="setMode('shapes')">Shapes</button>
+  </div>
+  <div style="display:flex;gap:5px;">
+    <button class="opt-pill on" id="hint-pill" onclick="toggleHint()">🔊 Hint</button>
+    <button class="opt-pill" id="delay-pill" onclick="toggleDelay()">⏱ Delay</button>
+  </div>
+</div>
+
+<div id="cam-section">
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="canvas"></canvas>
+
+  <div id="attempt-dots">
+    <div class="dot active" id="dot-0"></div>
+    <div class="dot" id="dot-1"></div>
+    <div class="dot" id="dot-2"></div>
+    <div id="attempt-label">attempt 1 of 3</div>
+  </div>
+  <div id="status-badge">📷 scanning…</div>
+  <div id="mic-badge">waiting…</div>
+
+  <div class="overlay" id="screen-start">
+    <h2>🔮 Psychic Flashcard Quiz</h2>
+    <p>Blindfold on — hold an A5 card up. 3 attempts before the answer is revealed.</p>
+    <div class="api-row">
+      <label>Anthropic API Key</label>
+      <div class="api-input-wrap">
+        <input type="password" id="api-key-input" placeholder="sk-ant-api03-..." />
+        <button id="clear-key-btn" onclick="clearKey()" style="display:none">Clear</button>
+      </div>
+      <div id="key-saved-badge">✅ Key saved!</div>
+    </div>
+    <p class="api-note">Get a key at <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a></p>
+    <button id="btn-ready" onclick="startApp()">I'm Ready</button>
+  </div>
+</div>
+
+<div id="feedback-bar" class="idle">Enter your API key and tap I'm Ready</div>
+<div id="heard-bar" style="text-align:center;font-size:18px;font-weight:600;padding:10px 12px;color:#facc15;background:#1a1a00;min-height:44px;border-top:1px solid #333;">---</div>
+
+<div id="bottombar">
+  <button class="ctrl" id="btn-flip" onclick="flipCam()" style="display:none">🔄 Flip</button>
+  <div id="score-tag"></div>
+  <button class="ctrl" id="btn-stop" onclick="stopApp()" style="display:none">⏹ Stop</button>
+</div>
+
+<script>
+const API_PROXY   = '/api';
+const STORAGE_KEY = 'flashcard_api_key';
+const MODEL       = 'claude-haiku-4-5';
+const MAX_ATTEMPTS = 3;
+const KNOWN = ['red','blue','green','yellow','purple','orange','pink',
+               'circle','square','triangle','star','diamond','heart','cross','wavy'];
+
+let apiKey = '';
+let mode = 'mix', hintOn = true, delayOn = false;
+let camStream = null, facing = 'user';
+let recog = null, listening = false, busy = false, running = false;
+let ok = 0, bad = 0;
+let attempt = 0, cardAnswer = null;
+
+const video      = document.getElementById('video');
+const canvas     = document.getElementById('canvas');
+const fb         = document.getElementById('feedback-bar');
+const micBadge   = document.getElementById('mic-badge');
+const statusBadge= document.getElementById('status-badge');
+const attemptDots= document.getElementById('attempt-dots');
+
+// ── LOAD SAVED KEY ────────────────────────────────────────────────────────────
+window.addEventListener('load', () => {
+  // Restore score
+  const savedOk  = sessionStorage.getItem('score_ok');
+  const savedBad = sessionStorage.getItem('score_bad');
+  if (savedOk)  ok  = parseInt(savedOk);
+  if (savedBad) bad = parseInt(savedBad);
+  updateScore();
+
+  // Auto restart if session was running
+  const wasRunning = sessionStorage.getItem('session_running');
+  const savedKey   = localStorage.getItem(STORAGE_KEY);
+  if (wasRunning === 'true' && savedKey) {
+    apiKey = savedKey;
+    document.getElementById('screen-start').style.display = 'none';
+    setTimeout(autoRestart, 800);
+    return;
+  }
+
+  // Load saved key into input
+  if (savedKey) {
+    apiKey = savedKey;
+    document.getElementById('api-key-input').value = savedKey;
+    document.getElementById('key-saved-badge').style.display = 'block';
+    document.getElementById('clear-key-btn').style.display = 'block';
+    setFb('idle', 'Key loaded — tap I\'m Ready!');
+  }
+});
+
+function clearKey() {
+  localStorage.removeItem(STORAGE_KEY);
+  apiKey = '';
+  document.getElementById('api-key-input').value = '';
+  document.getElementById('key-saved-badge').style.display = 'none';
+  document.getElementById('clear-key-btn').style.display = 'none';
+}
+
+// ── START / STOP ──────────────────────────────────────────────────────────────
+async function startApp() {
+  const k = document.getElementById('api-key-input').value.trim();
+  if (!k || !k.startsWith('sk-ant')) { alert('Please enter a valid Anthropic API key'); return; }
+  apiKey = k;
+  localStorage.setItem(STORAGE_KEY, apiKey);
+  try {
+    const probe = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
+    probe.getTracks().forEach(t => t.stop());
+    await openCamera();
+    setupSpeech();
+    go();
+  } catch(e) { setFb('wrong', `Camera/mic error: ${e.message}`); }
+}
+
+async function autoRestart() {
+  try {
+    await openCamera();
+    setupSpeech();
+    go();
+  } catch(e) {
+    sessionStorage.removeItem('session_running');
+    document.getElementById('screen-start').style.display = 'flex';
+  }
+}
+
+function go() {
+  document.getElementById('screen-start').style.display = 'none';
+  document.getElementById('btn-flip').style.display = '';
+  document.getElementById('btn-stop').style.display = '';
+  statusBadge.classList.add('visible');
+  micBadge.classList.add('visible');
+  attemptDots.classList.add('visible');
+  running = true;
+  sessionStorage.setItem('session_running', 'true');
+  resetCard();
+  waitForTap();
+}
+
+function stopApp() {
+  running = false; listening = false; busy = false;
+  try { recog && recog.abort(); } catch(e) {}
+  speechSynthesis.cancel();
+  if (camStream) camStream.getTracks().forEach(t => t.stop());
+  statusBadge.classList.remove('visible');
+  micBadge.classList.remove('visible');
+  attemptDots.classList.remove('visible');
+  document.getElementById('btn-flip').style.display = 'none';
+  document.getElementById('btn-stop').style.display = 'none';
+  document.getElementById('screen-start').style.display = 'flex';
+  sessionStorage.removeItem('session_running');
+  sessionStorage.removeItem('score_ok');
+  sessionStorage.removeItem('score_bad');
+  setFb('idle', 'Tap I\'m Ready to start again');
+}
+
+// ── CAMERA ────────────────────────────────────────────────────────────────────
+async function openCamera() {
+  if (camStream) camStream.getTracks().forEach(t => t.stop());
+  camStream = await navigator.mediaDevices.getUserMedia({
+    video:{ facingMode:facing, width:{ideal:1920}, height:{ideal:1080} }, audio:false
+  });
+  video.srcObject = camStream;
+  await new Promise(r => { video.onloadeddata = r; setTimeout(r, 2000); });
+  const track = camStream.getVideoTracks()[0];
+  try { const c=track.getCapabilities(); if(c.zoom) await track.applyConstraints({advanced:[{zoom:c.zoom.min}]}); } catch(e){}
+}
+
+async function flipCam() {
+  facing = facing==='user'?'environment':'user';
+  await openCamera();
+}
+
+function captureJpeg() {
+  const w=video.videoWidth||640, h=video.videoHeight||480;
+  canvas.width=w; canvas.height=h;
+  const ctx=canvas.getContext('2d');
+  ctx.save();
+  if(facing==='user'){ctx.translate(w,0);ctx.scale(-1,1);}
+  ctx.drawImage(video,0,0,w,h);
+  ctx.restore();
+  return canvas.toDataURL('image/jpeg',0.88).split(',')[1];
+}
+
+// ── CARD SCANNING ─────────────────────────────────────────────────────────────
+async function scanCard() {
+  if (!running) return;
+  if (cardAnswer) { askQuestion(); return; } // already have answer
+
+  busy = true;
+  setStatus('scanning', '📷 Scanning…');
+  setFb('thinking', '📸 Hold your card still…');
+  setMic('thinking', '📸 Scanning…');
+
+  if (delayOn) await new Promise(r => setTimeout(r, 3000));
+  else await new Promise(r => setTimeout(r, 500));
+
+  let img;
+  try { img = captureJpeg(); }
+  catch(e) { busy=false; setTimeout(scanCard, 1000); return; }
+
+  const q = mode==='colors'
+    ? 'What color is the card? Reply with one word only: red, blue, green, yellow, purple, orange, or pink.'
+    : mode==='shapes'
+    ? 'What shape is on the card? Reply with one word only: circle, square, triangle, star, diamond, heart, cross, or wavy.'
+    : 'What color or shape is on the card? Reply with one word only from: red, blue, green, yellow, purple, orange, pink, circle, square, triangle, star, diamond, heart, cross, wavy.';
+
+  try {
+    const r = await fetch(API_PROXY, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        apiKey, model:MODEL, max_tokens:10,
+        messages:[{role:'user', content:[
+          {type:'image', source:{type:'base64', media_type:'image/jpeg', data:img}},
+          {type:'text', text:q}
+        ]}]
+      })
+    });
+    const data = await r.json();
+    const raw  = (data?.content?.[0]?.text||'').trim().toLowerCase();
+    let found = null;
+    for (const k of KNOWN) { if (raw.includes(k)) { found = k==='wavy'?'wavy lines':k; break; } }
+
+    if (!found) {
+      busy = false;
+      setStatus('notfound', '⚠️ No card seen');
+      say('I cannot see the card. Hold it up again.', () => setTimeout(scanCard, 1000));
+      return;
+    }
+
+    cardAnswer = found;
+    busy = false;
+    setStatus('found', '✅ Card detected');
+    say('Card detected.', () => setTimeout(askQuestion, 400));
+
+  } catch(err) {
+    busy = false;
+    setFb('wrong', `Error: ${err.message}`);
+    setTimeout(scanCard, 2000);
+  }
+}
+
+function askQuestion() {
+  if (!running) return;
+  setFb('idle', 'Say your answer…');
+  say(getPrompt(), () => {
+    if (running) startListening();
+  });
+}
+
+// ── SPEECH ────────────────────────────────────────────────────────────────────
+function setupSpeech() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { setFb('wrong','Use Chrome.'); return; }
+  recog = new SR();
+  recog.lang = 'en-AU';
+  recog.continuous = false;
+  recog.interimResults = true;
+  recog.maxAlternatives = 5;
+
+  recog.onresult = e => {
+    const alts = [];
+    for (let i=0; i<e.results.length; i++)
+      for (let j=0; j<e.results[i].length; j++)
+        alts.push(e.results[i][j].transcript.toLowerCase().trim());
+
+    if (alts[0]) {
+      setMic('listening', `"${alts[0]}"`);
+      document.getElementById('heard-bar').textContent = `Heard: "${alts[0]}"`;
+    }
+
+    if (e.results[e.results.length-1].isFinal) {
+      listening = false;
+      const best = findBest(alts) || alts[0];
+      if (best) handleAnswer(best);
+    }
+  };
+
+  recog.onend = () => {
+    listening = false;
+    // Always restart if session is running and not busy
+    // This handles timeouts, pauses, silence — keeps mic open indefinitely
+    if (running && !busy && cardAnswer) {
+      setTimeout(startListening, 300);
+    }
+  };
+  recog.onerror = (e) => {
+    listening = false;
+    if (running && !busy && cardAnswer) setTimeout(startListening, 300);
+  };
+}
+
+function startListening() {
+  if (!running || busy || listening || !recog) return;
+  listening = true;
+  setMic('listening', '🎤 Listening…');
+  try { recog.start(); } catch(e) { listening = false; }
+}
+
+function stopListening() {
+  listening = false;
+  try { recog && recog.stop(); } catch(e) {}
+}
+
+function findBest(alts) {
+  for (const a of alts) for (const k of KNOWN) if (a.includes(k)) return a;
+  return null;
+}
+
+function say(text, cb) {
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.rate = 0.88; u.lang = 'en-AU';
+  u.onend = () => { if (cb) setTimeout(cb, 700); };
+  speechSynthesis.speak(u);
+}
+
+function getPrompt() {
+  if (!hintOn) return 'What do you sense?';
+  return mode==='colors' ? 'What color is the card?'
+       : mode==='shapes' ? 'What shape is on the card?'
+       : 'What do you sense?';
+}
+
+// ── ANSWER HANDLING ───────────────────────────────────────────────────────────
+// ── AUDIBLE COUNTDOWN THEN SCAN ──────────────────────────────────────────────
+function waitForTap() {
+  setFb('idle', 'Get your card ready…');
+  say('Get your card ready.', () => startCountdown(5));
+}
+
+function startCountdown(n) {
+  if (!running) return;
+  if (n === 0) {
+    setFb('thinking', '📸 Scanning…');
+    setMic('thinking', '📸 Scanning…');
+    scanCard();
+    return;
+  }
+  setFb('idle', `Scanning in ${n}…`);
+  setMic('', `${n}…`);
+  say(String(n), () => startCountdown(n - 1));
+}
+
+function handleAnswer(userGuess) {
+  if (busy || !running || !cardAnswer) return;
+  busy = true;
+  stopListening();
+  setMic('thinking', '🤖 Checking…');
+  setFb('thinking', '🤖 Checking…');
+  checkGuess(userGuess, cardAnswer);
+}
+
+function matchGuess(guess, answer) {
+  const g = guess.toLowerCase();
+  const a = answer.toLowerCase();
+  if (g.includes(a)) return true;
+  if (a.includes('wavy') && (g.includes('wave')||g.includes('wavy')||g.includes('line'))) return true;
+  const words = g.split(/\s+/);
+  for (const w of words) if (w.length>2 && (a.includes(w)||w.includes(a))) return true;
+  return false;
+}
+
+function checkGuess(userGuess, correctAnswer) {
+  const isCorrect = matchGuess(userGuess, correctAnswer);
+
+  if (isCorrect) {
+    ok++; updateScore();
+    markDot(attempt, 'used');
+    setFb('correct', '✅ Yes! Correct!');
+    say('Yes! Correct!', () => { busy=false; nextCard(); });
+  } else {
+    markDot(attempt, 'used');
+    attempt++;
+
+    if (attempt >= MAX_ATTEMPTS) {
+      bad++; updateScore();
+      setFb('reveal', `❌ It was ${correctAnswer}`);
+      say(`No. The answer is ${correctAnswer}.`, () => { busy=false; nextCard(); });
+    } else {
+      const left = MAX_ATTEMPTS - attempt;
+      updateDots();
+      setFb('try', left===1 ? '❌ Wrong — last attempt!' : `❌ Wrong — ${left} more attempts`);
+      say(left===1 ? 'No. Last attempt.' : `No. ${left} more attempts.`, () => {
+        busy = false;
+        if (running) setTimeout(startListening, 500);
+      });
+    }
+  }
+}
+
+function nextCard() {
+  if (!running) return;
+  sessionStorage.setItem('score_ok', ok);
+  sessionStorage.setItem('score_bad', bad);
+  say('Hold up your next card.', () => setTimeout(() => location.reload(), 1200));
+}
+
+// ── CARD STATE ────────────────────────────────────────────────────────────────
+function resetCard() {
+  attempt = 0; cardAnswer = null; updateDots();
+}
+
+function updateDots() {
+  for (let i=0; i<MAX_ATTEMPTS; i++) {
+    const d = document.getElementById('dot-'+i);
+    d.className = 'dot'+(i<attempt?' used':i===attempt?' active':'');
+  }
+  document.getElementById('attempt-label').textContent = `attempt ${attempt+1} of ${MAX_ATTEMPTS}`;
+}
+
+function markDot(i, cls) {
+  const d = document.getElementById('dot-'+i);
+  if (d) d.className = 'dot '+cls;
+}
+
+// ── UI ────────────────────────────────────────────────────────────────────────
+function setFb(cls, msg) { 
+  fb.className=cls; fb.textContent=msg;
+}
+function setMic(cls, txt) { micBadge.className='visible '+cls; micBadge.textContent=txt; }
+function setStatus(state, txt) {
+  statusBadge.textContent = txt;
+  statusBadge.className = 'visible'+(state?(' '+state):'');
+}
+function updateScore() {
+  document.getElementById('score-tag').textContent = `✅ ${ok} · ❌ ${bad}`;
+}
+
+function setMode(m) {
+  mode=m;
+  document.querySelectorAll('.mode-pills .pill').forEach((b,i)=>{
+    b.className='pill'+(['mix','colors','shapes'][i]===m?' active':'');
+  });
+  if (running && !busy) { speechSynthesis.cancel(); busy=false; listening=false; resetCard(); say('Hold up your card.', ()=>setTimeout(scanCard,500)); }
+}
+
+function toggleHint() {
+  hintOn=!hintOn;
+  const p=document.getElementById('hint-pill');
+  p.textContent=hintOn?'🔊 Hint':'🔇 Hint';
+  p.className=hintOn?'opt-pill on':'opt-pill';
+}
+
+function toggleDelay() {
+  delayOn=!delayOn;
+  const p=document.getElementById('delay-pill');
+  p.textContent=delayOn?'⏱ Delay: on':'⏱ Delay';
+  p.className=delayOn?'opt-pill yon':'opt-pill';
+}
+</script>
+<script>
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js").catch(()=>{});
+}
+</script>
+</body>
+</html>
