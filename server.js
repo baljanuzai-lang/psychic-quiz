@@ -4,7 +4,7 @@ const fs    = require('fs');
 const path  = require('path');
 const os    = require('os');
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 const MIME = {
   '.html': 'text/html',
@@ -13,47 +13,24 @@ const MIME = {
   '.js':   'application/javascript',
 };
 
-function getLocalIP() {
-  const ifaces = os.networkInterfaces();
-  for (const name of Object.keys(ifaces)) {
-    for (const iface of ifaces[name]) {
-      if (iface.family === 'IPv4' && !iface.internal) return iface.address;
-    }
-  }
-  return 'localhost';
-}
-
 const server = http.createServer((req, res) => {
-
-  // Log every request so we can see what's coming in
   console.log(`${req.method} ${req.url}`);
 
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-api-key, anthropic-version');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  if (req.method === 'OPTIONS') {
-    res.writeHead(204);
-    res.end();
-    return;
-  }
+  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
-  // ── PROXY TO ANTHROPIC API ──────────────────────────────────────────────────
-  if (req.url === '/api' || req.url.startsWith('/api?') || req.url === '/api/') {
-    console.log('API route hit - method:', req.method);
-
-    if (req.method !== 'POST') {
-      res.writeHead(405);
-      res.end('Method not allowed');
-      return;
-    }
-
+  // ── PROXY TO ANTHROPIC ──────────────────────────────────────────────────────
+  if (req.url === '/api' && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => { body += chunk; });
     req.on('end', () => {
       try {
         const parsed  = JSON.parse(body);
-        const apiKey  = parsed.apiKey;
+        // Use env var API key — remove from body if sent
+        const apiKey  = process.env.ANTHROPIC_API_KEY || parsed.apiKey;
         delete parsed.apiKey;
         const postData = JSON.stringify(parsed);
 
@@ -75,7 +52,7 @@ const server = http.createServer((req, res) => {
           let data = '';
           apiRes.on('data', c => { data += c; });
           apiRes.on('end', () => {
-            console.log('Anthropic response status:', apiRes.statusCode);
+            console.log('Anthropic status:', apiRes.statusCode);
             res.writeHead(apiRes.statusCode, { 'Content-Type': 'application/json' });
             res.end(data);
           });
@@ -93,7 +70,7 @@ const server = http.createServer((req, res) => {
       } catch(e) {
         console.log('Parse error:', e.message);
         res.writeHead(400);
-        res.end(JSON.stringify({ error: 'Bad request: ' + e.message }));
+        res.end(JSON.stringify({ error: 'Bad request' }));
       }
     });
     return;
@@ -106,25 +83,12 @@ const server = http.createServer((req, res) => {
   const mime = MIME[ext] || 'text/plain';
 
   fs.readFile(filePath, (err, data) => {
-    if (err) {
-      console.log('File not found:', filePath);
-      res.writeHead(404);
-      res.end('Not found');
-      return;
-    }
+    if (err) { res.writeHead(404); res.end('Not found'); return; }
     res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'no-cache' });
     res.end(data);
   });
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  const ip = getLocalIP();
-  console.log('\n========================================');
-  console.log('  Psychic Flashcard App — RUNNING!');
-  console.log('========================================');
-  console.log(`\n  Open on your phone:`);
-  console.log(`  http://${ip}:${PORT}`);
-  console.log('\n  Keep this window open!');
-  console.log('  Press Ctrl+C to stop');
-  console.log('========================================\n');
+  console.log(`\nPsychic Flashcard App running on port ${PORT}\n`);
 });
