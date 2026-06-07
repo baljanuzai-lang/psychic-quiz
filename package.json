@@ -1,0 +1,10 @@
+{
+  "name": "psychic-quiz",
+  "version": "1.0.0",
+  "description": "Psychic Flashcard Quiz App",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {}
+}
